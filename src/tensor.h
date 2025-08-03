@@ -37,6 +37,7 @@ void tensor_alloc(tensor_t* tensor, u8 ndim, const u8* shape);
 void tensor_free(tensor_t* tensor);
 void tensor_rand(tensor_t* tensor, float low, float high);
 void tensor_fill(tensor_t* tensor, float value);
+void tensor_1d_slice(tensor_t* dst, tensor_t* src, size_t from, size_t to);
 
 #endif // TENSOR_H
 
@@ -74,9 +75,10 @@ void tensor_fill(tensor_t* tensor, float value);
 #define MAT_COLS(mat) (mat)->shape[1]
 
 // ROW utils
-#define ROW_VIEW(dst, src, row) tensor_2d_to_1d_view(dst, src, row)
+#define ROW_VIEW(dst, src, row) tensor_2d_to_1d_row_view(dst, src, row)
 #define ROW_COPY(dst, src) tensor_copy(dst, src)
-#define ROW_AT(row, j) ((row).data[(j) * (row).stride[0]])
+#define ROW_AT(row, j) ((row)->data[(j) * (row)->stride[0]])
+#define ROW_COLS(row) (row)->shape[0]
 
 float randf(void)
 {
@@ -155,12 +157,16 @@ void tensor_copy(tensor_t* dst, const tensor_t* src)
 
     if (src->size == 0) return;
 
-    if (dst->ndim == 2 && src->ndim == 1 && dst->shape[0] == 1) {
+    if (dst->ndim == 2 && src->ndim == 1) {
+        NNC_ASSERT(dst->shape[0] == 1 || dst->shape[1] == 1);
+        NNC_ASSERT(dst->size == src->shape[0]);
         for (u32 i = 0; i < src->shape[0]; ++i) {
             dst->data[i * dst->stride[1]] = src->data[i * src->stride[0]];
         }
     }
-    else if (dst->ndim == 1 && src->ndim == 2 && src->shape[0] == 1) {
+    else if (dst->ndim == 1 && src->ndim == 2) {
+         NNC_ASSERT(src->shape[0] == 1 || src->shape[1] == 1);
+         NNC_ASSERT(dst->shape[0] == src->size);
          for (u32 i = 0; i < dst->shape[0]; ++i) {
             dst->data[i * dst->stride[0]] = src->data[i * src->stride[1]];
         }
@@ -170,10 +176,13 @@ void tensor_copy(tensor_t* dst, const tensor_t* src)
         NNC_ASSERT(dst->shape[1] == src->shape[1]);
         for (u32 i = 0; i < dst->shape[0]; ++i) {
             for (u32 j = 0; j < dst->shape[1]; ++j) {
-                float* src_ptr = &src->data[i * src->stride[0] + j * src->stride[1]];
-                float* dst_ptr = &dst->data[i * dst->stride[0] + j * dst->stride[1]];
-                *dst_ptr = *src_ptr;
+                MAT_AT(dst, i, j) = MAT_AT(src, i, j);
             }
+        }
+    }
+    else if (dst->ndim == 1 && dst->ndim == src->ndim) {
+        for (u32 i = 0; i < dst->shape[0]; ++i) {
+            dst->data[i * dst->stride[0]] = src->data[i * src->stride[0]];
         }
     }
     else {
@@ -181,7 +190,7 @@ void tensor_copy(tensor_t* dst, const tensor_t* src)
     }
 }
 
-void tensor_2d_to_1d_view(tensor_t* dst, const tensor_t* src, u32 row)
+void tensor_2d_to_1d_row_view(tensor_t* dst, const tensor_t* src, u32 row)
 {
     NNC_ASSERT(dst != NULL && src != NULL);
     NNC_ASSERT(src->data != NULL);
@@ -192,9 +201,8 @@ void tensor_2d_to_1d_view(tensor_t* dst, const tensor_t* src, u32 row)
     dst->view = true;
 
     dst->size = MAT_COLS(src);
-    
     dst->shape[0] = MAT_COLS(src);
-    dst->stride[0] = MAT_COLS(src);
+    dst->stride[0] = src->stride[1];
     dst->data = &src->data[row * src->stride[0]];
 }
 
@@ -227,6 +235,23 @@ void tensor_2d_sum(tensor_t* dst, tensor_t* a)
     }
 }
 
+void tensor_1d_slice(tensor_t* dst, tensor_t* src, size_t from, size_t len)
+{
+    NNC_ASSERT(dst != NULL);
+    NNC_ASSERT(src != NULL);
+    NNC_ASSERT(src->ndim == 1);
+    NNC_ASSERT(from < src->shape[0]);
+    NNC_ASSERT((from + len) <= src->shape[0]);
+
+    dst->ndim = 1;
+    dst->view = true;
+
+    dst->shape[0] = len;
+    dst->stride[0] = src->stride[0];
+    dst->size = dst->shape[0];
+    dst->data = &src->data[from * src->stride[0]];
+}
+
 void tensor_activate(tensor_t* dst, float (*activate)(float))
 {
     NNC_ASSERT(dst != NULL);
@@ -243,19 +268,32 @@ void tensor_print(const tensor_t* tensor, const char* name, bool detailed)
 {
     assert(tensor != NULL);
     assert(name != NULL);
-    
+
     printf("%s = [\n", name);
-    for(int i = 0; i < tensor->shape[0]; i++) {
+    if (tensor->ndim == 2) {
+        for(int i = 0; i < tensor->shape[0]; i++) {
+            printf("    ");
+            for (int j = 0; j < tensor->shape[1]; j++) {
+                printf("%5.1f ", MAT_AT(tensor, i, j));
+            }
+            printf("\n");
+        }
+    } else if (tensor->ndim == 1) {
         printf("    ");
-        for (int j = 0; j < tensor->shape[1]; j++) {
-            printf("%5.1f ", tensor->data[i * tensor->stride[0] + j * tensor->stride[1]]);
-            // printf("%f", tensor->data[i * tensor->stride[0] + j * tensor->stride[1]]);
-            if (j != (tensor->shape[1] - 1))
-                printf("    ");
+        for (int i = 0; i < tensor->shape[0]; i++) {
+            printf("%5.1f ", tensor->data[i * tensor->stride[0]]);
         }
         printf("\n");
     }
     printf("]\n");
+
+    if (detailed) {
+        printf("  ndim: %d\n", tensor->ndim);
+        printf("  shape: [%d, %d]\n", tensor->shape[0], tensor->shape[1]);
+        printf("  stride: [%d, %d]\n", tensor->stride[0], tensor->stride[1]);
+        printf("  size: %d\n", tensor->size);
+        printf("  view: %s\n", tensor->view ? "true" : "false");
+    }
 }
 
 #endif // TENSOR_H_IMPLEMENTATION
