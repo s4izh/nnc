@@ -12,11 +12,18 @@ float sigmoidf(float x)
     return 1.f / (1.f + expf(-x)); 
 }
 
+float sigmoidf_derivative(float x)
+{
+    return sigmoidf(x) * (1 - sigmoidf(x)); 
+}
+
 typedef struct {
     tensor_t as;
     tensor_t ws;
     tensor_t bs;
-    float (*activate)(float z);
+    tensor_t dt;
+    float (*act)(float z);
+    float (*dact)(float z);
 } layer_t;
 
 typedef struct {
@@ -78,30 +85,44 @@ void nn_alloc(nn_t* nn, size_t arch[], size_t arch_count)
         MAT_ALLOC(&nn->as[i], arch[i], 1);
     }
 #else
-    nn->layers = malloc(sizeof(*nn->layers) * (nn->arch_count));
+    nn->layers = NNC_MALLOC(sizeof(*nn->layers) * (nn->arch_count));
     MAT_ALLOC(&nn->layers[0].as, 1, arch[0]);
     for (size_t i = 1; i < nn->arch_count; ++i) {
         MAT_ALLOC(&nn->layers[i].ws, MAT_COLS(&nn->layers[i-1].as), arch[i]);
         MAT_ALLOC(&nn->layers[i].bs, 1, arch[i]);
         MAT_ALLOC(&nn->layers[i].as, 1, arch[i]);
-        nn->layers[i].activate = &sigmoidf;
+        MAT_ALLOC(&nn->layers[i].dt, 1, arch[i]);
+        nn->layers[i].act  = &sigmoidf;
+        nn->layers[i].dact = &sigmoidf_derivative;
     };
 #endif
+}
+
+void nn_free(nn_t* nn)
+{
+    MAT_FREE(&nn->layers[0].as);
+    for (size_t i = 1; i < nn->arch_count; ++i) {
+        MAT_FREE(&nn->layers[i].ws);
+        MAT_FREE(&nn->layers[i].bs);
+        MAT_FREE(&nn->layers[i].as);
+        nn->layers[i].act = NULL;
+    };
+    NNC_FREE(nn->layers);
 }
 
 void nn_print(nn_t* nn)
 {
     char buf[64];
-    sprintf(buf, "as[%d]", 0);
-    tensor_print(&nn->layers[0].as, buf, false);
+    // sprintf(buf, "as[%d]", 0);
+    // tensor_print(&nn->layers[0].as, buf, false);
     for (size_t i = 1; i < nn->arch_count; ++i) {
         sprintf(buf, "ws[%ld]", i);
         tensor_print(&nn->layers[i].ws, buf, false);
         sprintf(buf, "bs[%ld]", i);
         tensor_print(&nn->layers[i].bs, buf, false);
     }
-    sprintf(buf, "as[%ld]", nn->arch_count - 1);
-    tensor_print(&nn->layers[nn->arch_count - 1].as, buf, false);
+    // sprintf(buf, "as[%ld]", nn->arch_count - 1);
+    // tensor_print(&nn->layers[nn->arch_count - 1].as, buf, false);
 }
 
 void nn_rand(nn_t* nn, float low, float high)
@@ -117,7 +138,7 @@ void nn_forward(nn_t* nn)
     for (size_t i = 1; i < nn->arch_count; ++i) {
         MAT_DOT(&nn->layers[i].as, &nn->layers[i-1].as, &nn->layers[i].ws);
         MAT_SUM(&nn->layers[i].as, &nn->layers[i].bs);
-        MAT_ACT(&nn->layers[i].as, nn->layers[i].activate);
+        MAT_ACT(&nn->layers[i].as, nn->layers[i].act);
     }
 }
 
@@ -170,16 +191,38 @@ void nn_finite_diff(nn_t* nn, nn_t* grad, tensor_t* target, float eps)
     }
 }
 
-void nn_learn(nn_t* nn, nn_t* grad, float rate)
+void nn_backprop(nn_t* nn, nn_t* grad, tensor_t* target, float eps)
 {
-    for (size_t i = 1; i < nn->arch_count; ++i) {
-        for (size_t j = 0; j < MAT_ROWS(&nn->layers[i].ws); ++j) {
-            for (size_t k = 0; k < MAT_COLS(&nn->layers[i].ws); ++k) {
-                MAT_AT(&nn->layers[i].ws, j, k) -= rate * MAT_AT(&grad->layers[i].ws, j, k);
+    float saved, c;
+
+    for (size_t l = nn->arch_count - 1; l >= 0; --l) {
+        for (size_t j = 0; j < MAT_ROWS(&nn->layers[l].ws); ++j) {
+            for (size_t k = 0; k < MAT_COLS(&nn->layers[l].ws); ++k) {
+                saved = MAT_AT(&nn->layers[l].ws, j, k);
+                MAT_AT(&nn->layers[l].ws, j, k) += eps;
+                MAT_AT(&grad->layers[l].ws, j, k) = (nn_cost(nn, target) - c)/eps;
+                MAT_AT(&nn->layers[l].ws, j, k) = saved;
             }
         }
-        for (size_t j = 0; j < MAT_COLS(&nn->layers[i].bs); ++j) {
-            MAT_AT(&nn->layers[i].bs, 0, j) -= rate * MAT_AT(&grad->layers[i].bs, 0, j);
+        for (size_t j = 0; j < MAT_COLS(&nn->layers[l].bs); ++j) {
+            saved = MAT_AT(&nn->layers[l].bs, 0, j);
+            MAT_AT(&nn->layers[l].bs, 0, j) += eps;
+            MAT_AT(&grad->layers[l].bs, 0, j) = (nn_cost(nn, target) - c)/eps;
+            MAT_AT(&nn->layers[l].bs, 0, j) = saved;
+        }
+    }
+}
+
+void nn_learn(nn_t* nn, nn_t* grad, float rate)
+{
+    for (size_t l = 1; l < nn->arch_count; ++l) {
+        for (size_t j = 0; j < MAT_ROWS(&nn->layers[l].ws); ++j) {
+            for (size_t k = 0; k < MAT_COLS(&nn->layers[l].ws); ++k) {
+                MAT_AT(&nn->layers[l].ws, j, k) -= rate * MAT_AT(&grad->layers[l].ws, j, k);
+            }
+        }
+        for (size_t j = 0; j < MAT_COLS(&nn->layers[l].bs); ++j) {
+            MAT_AT(&nn->layers[l].bs, 0, j) -= rate * MAT_AT(&grad->layers[l].bs, 0, j);
         }
     }
 }
@@ -205,10 +248,11 @@ int main(int argc, char *argv[])
     srand(0);
     nn_t nn;
 
-    size_t arch[] = {2, 2, 1};
-
+    size_t arch[] = {2, 1};
     nn_alloc(&nn, arch, ARRAY_LEN(arch));
+
     nn_rand(&nn, 0, 1);
+    nn_print(&nn);
 
     float rate = 1e-1;
     float eps  = 1e-3;
@@ -216,11 +260,26 @@ int main(int argc, char *argv[])
     nn_t grad;
     nn_alloc(&grad, nn.arch, nn.arch_count);
 
-    for (size_t epoch = 0; epoch < 100*1000; ++epoch) {
+    for (size_t epoch = 0; epoch < 1000*1000; ++epoch) {
+        // printf("-----------EPOCH %ld---------------\n", epoch);
         nn_finite_diff(&nn, &grad, &target, eps);
         nn_learn(&nn, &grad, rate);
-        // printf("cost = %f\n", nn_cost(&nn, &target));
+        // printf("epoch = %ld, cost = %f\n", epoch, nn_cost(&nn, &target));
+        // nn_print(&nn);
+        // for (size_t i = 0; i < 2; ++i) {
+        //     for (size_t j = 0; j < 2; ++j) {
+        //         mat_t* input  = &NN_INPUT(&nn);
+        //         MAT_AT(input, 0, 0) = i;
+        //         MAT_AT(input, 0, 1) = j;
+        //         nn_forward(&nn);
+        //         tensor_t* output = &NN_OUTPUT(&nn);
+        //         printf("%ld %ld = %f\n", i, j, MAT_AT(output, 0, 0));
+        //     }
+        // }
     }
+
+    nn_free(&grad);
+
     printf("cost = %f\n", nn_cost(&nn, &target));
 
     printf("-----------------\n");

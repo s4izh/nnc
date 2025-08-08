@@ -53,6 +53,8 @@ void tensor_1d_slice(tensor_t* dst, tensor_t* src, size_t from, size_t to);
         tensor_alloc(_tensor, 2, _shape);                                      \
     } while (0)
 
+#define MAT_FREE(_tensor) tensor_free(_tensor)
+
 #define MAT_PRINT(mat) tensor_print(mat, #mat, false)
 
 #define MAT_RAND(_tensor, _low, _high) tensor_rand(_tensor, _low, _high)
@@ -274,14 +276,16 @@ void tensor_print(const tensor_t* tensor, const char* name, bool detailed)
         for(int i = 0; i < tensor->shape[0]; i++) {
             printf("    ");
             for (int j = 0; j < tensor->shape[1]; j++) {
-                printf("%5.1f ", MAT_AT(tensor, i, j));
+                // printf("%5.1f ", MAT_AT(tensor, i, j));
+                printf("%f ", MAT_AT(tensor, i, j));
             }
             printf("\n");
         }
     } else if (tensor->ndim == 1) {
         printf("    ");
         for (int i = 0; i < tensor->shape[0]; i++) {
-            printf("%5.1f ", tensor->data[i * tensor->stride[0]]);
+            // printf("%5.1f ", tensor->data[i * tensor->stride[0]]);
+            printf("%f ", tensor->data[i * tensor->stride[0]]);
         }
         printf("\n");
     }
