@@ -1,0 +1,407 @@
+\documentclass{article}
+
+\usepackage{amsmath}
+\usepackage{tikz}
+
+\begin{document}
+
+\section{Finite Derivative}
+
+\begin{align}
+  C'(w) = \lim_{\epsilon \to 0}\frac{C(w + \epsilon) - C(w)}{\epsilon}
+\end{align}
+
+\section{Gradient Descent}
+
+\newcommand{\pd}[2]{\frac{\partial #1}{\partial #2}}
+\def\avgsum[#1,#2]{\frac{1}{#2}\sum_{#1=1}^{#2}}
+\def\d{2.0}
+
+\subsection{One neuron with 1 input}
+
+\begin{center}
+  \begin{tikzpicture}
+    \node (X) at (-\d, 0) {$x$};
+    \node[shape=circle,draw=black] (N1) at (0, 0) {$\sigma, b^{(1)}$};
+    \node (Y) at ({\d}, 0) {$y$};
+    \path[->] (X) edge node[above] {$w^{(1)}$} (N1);
+    \path[->] (N1) edge (Y);
+  \end{tikzpicture}
+\end{center}
+
+\subsubsection{Forward}
+
+\begin{align}
+    a^{(0)} &= x \\
+    z^{(1)} &= a^{(0)}w^{(1)}+b^{(1)} \\
+    a^{(1)} &= \sigma(z^{(1)})
+\end{align}
+
+\subsubsection{Cost}
+
+\begin{itemize}
+\item $i$: concrete sample
+\item $n$: number of samples
+\end{itemize}
+
+\begin{align}
+E_i &= (a_i^{(1)} - y_i)^2 \\
+C &= \avgsum[i,n] (a_i^{(1)} - y_i)^2
+\end{align}
+
+\subsubsection{Chain rule}
+
+\begin{align}
+C(a^{(1)}(z^{(1)}(w^{(1)})) &= anything \\
+\pd{C}{w^{(1)}} &= \pd{C}{a^{(1)}} \pd{a^{(1)}}{z^{(1)}} \pd{z^{(1)}}{w^{(1)}}\\
+\end{align}
+
+\pagebreak
+
+\subsubsection{Derive cost}
+
+Derive respect $w^{(1)}$:
+
+\begin{align}
+\pd{C}{w^{(1)}} &= \pd{}{w^{(1)}}\left(\avgsum[i,n](a_i^{(1)} - y_i)^2\right) \\
+\pd{C}{w^{(1)}} &= \avgsum[i,n]\pd{}{w^{(1)}}\left((a_i^{(1)} - y_i)^2\right) \\
+\pd{C}{w^{(1)}} &= \avgsum[i,n]2(a_i^{(1)} - y_i)\pd{}{w^{(1)}}(a_i^{(1)} - y_i) \\
+\pd{C}{w^{(1)}} &= \pd{C}{a_i^{(1)}}\cdot\pd{a_i^{(1)}}{z_i^{(1)}}\cdot\pd{z_i^{(1)}}{w^{(1)}} \\
+\pd{C}{w^{(1)}} &= \avgsum[i,n]2(a_i^{(1)} - y_i)\pd{a_i^{(1)}}{z_i^{(1)}}\cdot\pd{z_i^{(1)}}{w^{(1)}} \\
+\pd{C}{w^{(1)}} &= \avgsum[i,n]2(a_i^{(1)} - y_i)(a_i^{(1)})(1-a_i^{(1)})\pd{z_i^{(1)}}{w^{(1)}} \\
+\pd{C}{w^{(1)}} &= \avgsum[i,n]2(a_i^{(1)} - y_i)(a_i^{(1)})(1-a_i^{(1)})(a_i^{(0)}) \\
+\end{align}
+
+Derive respect $b^{(1)}$:
+
+\begin{align}
+\pd{C}{b^{(1)}} &= \pd{}{b^{(1)}}\left(\avgsum[i,n](a_i^{(1)} - y_i)^2\right) \\
+\pd{C}{b^{(1)}} &= \avgsum[i,n]\pd{}{b^{(1)}}\left((a_i^{(1)} - y_i)^2\right) \\
+\pd{C}{b^{(1)}} &= \avgsum[i,n]2(a_i^{(1)} - y_i)\pd{}{b^{(1)}}(a_i^{(1)} - y_i) \\
+\pd{C}{b^{(1)}} &= \avgsum[i,n]2(a_i^{(1)} - y_i)(a_i^{(1)})(1-a_i^{(1)})\pd{z_i^{(1)}}{b^{(1)}} \\
+\pd{C}{b^{(1)}} &= \avgsum[i,n]2(a_i^{(1)} - y_i)(a_i^{(1)})(1-a_i^{(1)}) \\
+\end{align}
+
+\pagebreak
+
+\subsection{Two neurons with 1 input}
+
+\begin{center}
+  \begin{tikzpicture}
+    \node (X) at (-\d, 0) {$x$};
+    \node[shape=circle,draw=black] (N1) at (0, 0) {$\sigma, b^{(1)}$};
+    \node[shape=circle,draw=black] (N2) at (\d, 0) {$\sigma, b^{(2)}$};
+    \node (Y) at ({2*\d}, 0) {$y$};
+    \path[->] (X) edge node[above] {$w^{(1)}$} (N1);
+    \path[->] (N1) edge node[above] {$w^{(2)}$} (N2);
+    \path[->] (N2) edge (Y);
+  \end{tikzpicture}
+\end{center}
+
+\begin{align}
+    \sigma(x)  &= \frac{1}{1+e^{-x}} \\
+    \sigma'(x) &= \sigma(x)(1 - \sigma(x))
+\end{align}
+
+\subsubsection{Forward}
+
+\begin{align}
+    a^{(0)} &= x \\
+    z^{(1)} &= a^{(0)}w^{(1)}+b^{(1)} \\
+    a^{(1)} &= \sigma(z^{(1)}) \\
+    z^{(2)} &= a^{(1)}w^{(2)}+b^{(2)} \\
+    a^{(2)} &= \sigma(z^{(2)})
+\end{align}
+
+\subsection{Cost}
+
+\begin{align}
+    C  &= \avgsum[i,n](a_i^{(2)} - y_i)^2
+\end{align}
+
+\subsubsection{By $w^{(2)}$}
+
+\begin{align}
+    \pd{C}{w^{(2)}} &= \pd{}{w^{(2)}}\left(\avgsum[i,n](a_i^{(2)} - y_i)^2\right) \\
+    \pd{C}{w^{(2)}} &= \avgsum[i,n]\pd{}{w^{(2)}}(a_i^{(2)} - y_i)^2 \\
+    \pd{C}{w^{(2)}} &= \avgsum[i,n]2(a_i^{(2)} - y_i)\pd{a_i^{(2)}}{w^{(2)}} \\
+    \pd{a_i^{(2)}}{w^{(2)}} &= \pd{}{z_i} \sigma(z_i) \cdot \pd{z_i^{(2)}}{w^{(2)}} \\
+    \pd{a_i^{(2)}}{w^{(2)}} &= a_i^{(2)}(1 - a_i^{(2)})\pd{z_i^{(2)}}{w^{(2)}} \\
+    \pd{z_i^{(2)}}{w^{(2)}} &= \pd{}{z_i} (a^{(1)}w^{(2)}+b^{(2)}) = a_i^{(1)} \\
+    \pd{C}{w^{(2)}} &= \avgsum[i,n]2(a_i^{(2)} - y_i)a_i^{(2)}(1 - a_i^{(2)}) a_i^{(1)} \\
+    % \pd{z_i^{(2)}}{w^{(2)}} &= \pd{}{z_i} (a^{(1)}w^{(2)}+b^{(2)})
+    %     = \sigma(z_i) (1 - \sigma(z_i)) \cdot \pd{z_i^{(2)}}{w^{(2)}}
+    % \pd{a_i^{(2)}}{b^{(2)}} &= a_i^{(2)}(1 - a_i^{(2)}) \\
+    % \pd{C}{w^{(2)}} &= \avgsum[i,n] 2(a_i^{(2)} - y_i) a_i^{(2)} (1 - a_i^{(2)}) a_i^{(1)} \\
+    % \pd{C}{b^{(2)}} &= \avgsum[i,n] 2(a_i^{(2)} - y_i) a_i^{(2)} (1 - a_i^{(2)}) \\
+    % \pd{C}{b^{(2)}} &= \avgsum[i,n] 2(a_i^{(2)} - y_i) a_i^{(2)} (1 - a_i^{(2)}) }
+\end{align}
+
+\subsubsection{By $b^{(2)}$}
+
+\begin{align}
+    \pd{C}{b^{(2)}} &= \pd{}{w^{(2)}}\left(\avgsum[i,n](a_i^{(2)} - y_i)^2\right) \\
+    \pd{C}{b^{(2)}} &= \avgsum[i,n]\pd{}{b^{(2)}}(a_i^{(2)} - y_i)^2 \\
+    \pd{C}{b^{(2)}} &= \avgsum[i,n]2(a_i^{(2)} - y_i)\pd{a_i^{(2)}}{b^{(2)}} \\
+    \pd{a_i^{(2)}}{b^{(2)}} &= \pd{}{z_i} \sigma(z_i) \cdot \pd{z_i^{(2)}}{b^{(2)}} \\
+    \pd{a_i^{(2)}}{b^{(2)}} &= a_i^{(2)}(1 - a_i^{(2)})\pd{z_i^{(2)}}{b^{(2)}} \\
+    \pd{z_i^{(2)}}{b^{(2)}} &= \pd{}{z_i} (a^{(1)}b^{(2)}+b^{(2)}) = 1 \\
+    \pd{C}{b^{(2)}} &= \avgsum[i,n]2(a_i^{(2)} - y_i)a_i^{(2)}(1 - a_i^{(2)}) \\
+    % \pd{z_i^{(2)}}{w^{(2)}} &= \pd{}{z_i} (a^{(1)}w^{(2)}+b^{(2)})
+    %     = \sigma(z_i) (1 - \sigma(z_i)) \cdot \pd{z_i^{(2)}}{w^{(2)}}
+    % \pd{a_i^{(2)}}{b^{(2)}} &= a_i^{(2)}(1 - a_i^{(2)}) \\
+    % \pd{C}{w^{(2)}} &= \avgsum[i,n] 2(a_i^{(2)} - y_i) a_i^{(2)} (1 - a_i^{(2)}) a_i^{(1)} \\
+    % \pd{C}{b^{(2)}} &= \avgsum[i,n] 2(a_i^{(2)} - y_i) a_i^{(2)} (1 - a_i^{(2)}) \\
+    % \pd{C}{b^{(2)}} &= \avgsum[i,n] 2(a_i^{(2)} - y_i) a_i^{(2)} (1 - a_i^{(2)}) }
+\end{align}
+
+\subsubsection{By $w^{(1)}$}
+
+\begin{align}
+    \pd{C}{w^{(1)}} &= \pd{}{w^{(1)}}\left(\avgsum[i,n](a_i^{(2)} - y_i)^2\right) \\
+    \pd{C}{w^{(1)}} &= \avgsum[i,n]\pd{}{w^{(1)}}(a_i^{(2)} - y_i)^2 \\
+    \pd{C}{w^{(1)}} &= \avgsum[i,n]2(a_i^{(2)} - y_i)\pd{a_i^{(2)}}{w^{(1)}} \\
+    \pd{a_i^{(2)}}{w^{(1)}} &= \pd{}{z_i} \sigma(z_i) \cdot \pd{z_i^{(2)}}{w^{(1)}} \\
+    \pd{a_i^{(2)}}{w^{(1)}} &= a_i^{(2)}(1 - a_i^{(2)})\pd{z_i^{(2)}}{w^{(1)}} \\
+    \pd{z_i^{(2)}}{w^{(1)}} &= \pd{}{w^{(1)}} (a^{(1)}w^{(2)}+b^{(2)}) \\
+    % a_i^{(1)} &= \sigma(z^1)
+    % \pd{C}{w^{(1)}} &= \avgsum[i,n]2(a_i^{(2)} - y_i)a_i^{(2)}(1 - a_i^{(2)}) a_i^{(1)} \\
+    % \pd{z_i^{(2)}}{w^{(2)}} &= \pd{}{z_i} (a^{(1)}w^{(2)}+b^{(2)})
+    %     = \sigma(z_i) (1 - \sigma(z_i)) \cdot \pd{z_i^{(2)}}{w^{(2)}}
+    % \pd{a_i^{(2)}}{b^{(2)}} &= a_i^{(2)}(1 - a_i^{(2)}) \\
+    % \pd{C}{w^{(2)}} &= \avgsum[i,n] 2(a_i^{(2)} - y_i) a_i^{(2)} (1 - a_i^{(2)}) a_i^{(1)} \\
+    % \pd{C}{b^{(2)}} &= \avgsum[i,n] 2(a_i^{(2)} - y_i) a_i^{(2)} (1 - a_i^{(2)}) \\
+    % \pd{C}{b^{(2)}} &= \avgsum[i,n] 2(a_i^{(2)} - y_i) a_i^{(2)} (1 - a_i^{(2)}) }
+\end{align}
+
+\pagebreak
+
+\subsection{Three neurons with 1 input}
+
+\begin{center}
+  \begin{tikzpicture}
+    \node (X) at (-\d, 0) {$x$};
+    \node[shape=circle,draw=black] (N1) at (0, 0) {$\sigma, b^{(1)}$};
+    \node[shape=circle,draw=black] (N2) at (\d, 0) {$\sigma, b^{(2)}$};
+    \node[shape=circle,draw=black] (N3) at (2*\d, 0) {$\sigma, b^{(3)}$};
+    \node (Y) at ({3*\d}, 0) {$y$};
+    \path[->] (X) edge node[above] {$w^{(1)}$} (N1);
+    \path[->] (N1) edge node[above] {$w^{(2)}$} (N2);
+    \path[->] (N2) edge node[above] {$w^{(3)}$} (N3);
+    \path[->] (N2) edge (N3);
+    \path[->] (N3) edge (Y);
+  \end{tikzpicture}
+\end{center}
+
+\subsubsection{Forward}
+
+\begin{align}
+    a^{(0)} &= x \\
+    z^{(1)} &= a^{(0)}w^{(1)}+b^{(1)} \\
+    a^{(1)} &= \sigma(z^{(1)}) \\
+    z^{(2)} &= a^{(1)}w^{(2)}+b^{(2)} \\
+    a^{(2)} &= \sigma(z^{(2)}) \\
+    z^{(3)} &= a^{(2)}w^{(3)}+b^{(3)} \\
+    a^{(3)} &= \sigma(z^{(3)})
+\end{align}
+
+Generalización:
+
+\begin{align}
+    z^{(l)} &= a^{(l-1)}w^{(l)}+b^{(l)} \\
+    a^{(l)} &= \sigma(z^{(l)})
+\end{align}
+
+\subsubsection{Cost}
+
+\begin{itemize}
+\item $i$: concrete sample
+\item $n$: number of samples
+\end{itemize}
+
+\begin{align}
+E_i &= (a_i^{(3)} - y_i)^2 \\
+C &= \avgsum[i,n] (a_i^{(3)} - y_i)^2
+\end{align}
+
+\pagebreak
+
+Derive respect $w^{(3)} \rightarrow C(a^{(3)}(z^{(3)}(w^{(3)})))$,
+chain rule:
+
+\begin{align}
+\pd{C}{w^{(3)}} &= \pd{C}{a_i^{(3)}}\cdot\pd{a_i^{(3)}}{z_i^{(3)}}\cdot\pd{z_i^{(3)}}{w^{(3)}} \\
+\pd{C}{a^{(3)}} &= \avgsum[i,n] 2 (a_i^{(3)} - y_i) \\
+\pd{a_i^{(3)}}{z_i^{(3)}} &= ({a_i^{(3)}}) (1-{a_i^{(3)}}) \\
+\pd{z_i^{(3)}}{w^{(3)}} & = a_i^{(2)}
+\end{align}
+
+Derive respect $b^{(3)} \rightarrow C(a^{(3)}(z^{(3)}(b^{(3)})))$,
+chain rule:
+
+\begin{align}
+\pd{C}{b^{(3)}} &= \pd{C}{a_i^{(3)}}\cdot\pd{a_i^{(3)}}{z_i^{(3)}}\cdot\pd{z_i^{(3)}}{b^{(3)}} \\
+\pd{z_i^{(3)}}{b^{(3)}} &= 1
+\end{align}
+
+Derive respect $w^{(2)} \rightarrow C(a^{(3)}(z^{(3)}(a^{(2)}(z^{(2)}(w^{(2)})))))$,
+chain rule:
+
+\begin{align}
+  \pd{C}{w^{(2)}} &= \pd{C}{a_i^{(3)}}\cdot\pd{a_i^{(3)}}{z_i^{(3)}}\cdot\pd{z_i^{(3)}}{a_i^{(2)}}
+  \cdot \pd{a_i^{(2)}}{z_i^{(2)}}\cdot\pd{z_i^{(2)}}{w_i^{(2)}}\\
+\pd{z_i^{(3)}}{a_i^{(2)}} &= w^{(3)} \\
+\pd{a_i^{(2)}}{z_i^{(2)}} &= ({a_i^{(2)}}) (1-{a_i^{(2)}}) \\
+\pd{z_i^{(2)}}{w^{(2)}} &= a_i^{(1)}
+\end{align}
+
+Derive respect $b^{(2)} \rightarrow C(a^{(3)}(z^{(3)}(a^{(2)}(z^{(2)}(b^{(2)})))))$,
+chain rule:
+
+\begin{align}
+  \pd{C}{b^{(2)}} &= \pd{C}{a_i^{(3)}}\cdot\pd{a_i^{(3)}}{z_i^{(3)}}\cdot\pd{z_i^{(3)}}{a_i^{(2)}}
+  \cdot \pd{a_i^{(2)}}{z_i^{(2)}}\cdot\pd{z_i^{(2)}}{b_i^{(2)}}\\
+\pd{z_i^{(2)}}{b^{(2)}} &= 1
+\end{align}
+
+\pagebreak
+
+Derive respect $w^{(1)} \rightarrow C(a^{(3)}(z^{(3)}(a^{(2)}(z^{(2)}(a^{(1)}(z^{(1)}(w^{(1)})))))))$,
+chain rule:
+
+\begin{align}
+  \pd{C}{w^{(1)}} &= \pd{C}{a_i^{(3)}}
+  \cdot \pd{a_i^{(3)}}{z_i^{(3)}}
+  \cdot \pd{z_i^{(3)}}{a_i^{(2)}}
+  \cdot \pd{a_i^{(2)}}{z_i^{(2)}}
+  \cdot \pd{z_i^{(2)}}{a_i^{(1)}}
+  \cdot \pd{a_i^{(1)}}{z_i^{(1)}}
+  \cdot \pd{z_i^{(1)}}{w_i^{(1)}} \\
+\pd{z_i^{(2)}}{a_i^{(1)}} &= w^{(2)} \\
+\pd{a_i^{(1)}}{z_i^{(1)}} &= ({a_i^{(1)}}) (1-{a_i^{(1)}}) \\
+\pd{z_i^{(1)}}{w^{(1)}} &= a_i^{(0)}
+\end{align}
+
+Derive respect $b^{(1)} \rightarrow C(a^{(3)}(z^{(3)}(a^{(2)}(z^{(2)}(a^{(1)}(z^{(1)}(b^{(1)})))))))$,
+chain rule:
+
+\begin{align}
+  \pd{C}{b^{(1)}} &= \pd{C}{a_i^{(3)}}
+  \cdot \pd{a_i^{(3)}}{z_i^{(3)}}
+  \cdot \pd{z_i^{(3)}}{a_i^{(2)}}
+  \cdot \pd{a_i^{(2)}}{z_i^{(2)}}
+  \cdot \pd{z_i^{(2)}}{a_i^{(1)}}
+  \cdot \pd{a_i^{(1)}}{z_i^{(1)}}
+  \cdot \pd{z_i^{(1)}}{b_i^{(1)}} \\
+\pd{z_i^{(1)}}{b^{(1)}} &= 1
+\end{align}
+
+Generalization:
+
+\begin{align}
+\pd{C}{w^{(3)}} &= \pd{C}{a_i^{(3)}}
+  \cdot \pd{a_i^{(3)}}{z_i^{(3)}}
+  \cdot \pd{z_i^{(3)}}{w^{(3)}} \\
+\pd{C}{w^{(2)}} &= \pd{C}{a_i^{(3)}}
+  \cdot \pd{a_i^{(3)}}{z_i^{(3)}}
+  \cdot \pd{z_i^{(3)}}{a_i^{(2)}}
+  \cdot \pd{a_i^{(2)}}{z_i^{(2)}}
+  \cdot \pd{z_i^{(2)}}{w_i^{(2)}}\\
+\pd{C}{w^{(1)}} &= \pd{C}{a_i^{(3)}}
+  \cdot \pd{a_i^{(3)}}{z_i^{(3)}}
+  \cdot \pd{z_i^{(3)}}{a_i^{(2)}}
+  \cdot \pd{a_i^{(2)}}{z_i^{(2)}}
+  \cdot \pd{z_i^{(2)}}{a_i^{(1)}}
+  \cdot \pd{a_i^{(1)}}{z_i^{(1)}}
+  \cdot \pd{z_i^{(1)}}{w_i^{(1)}}
+\end{align}
+
+\begin{align}
+\pd{C}{w^{(3)}} &= \pd{C}{z_i^{(3)}}
+  \cdot \pd{z_i^{(3)}}{w^{(3)}} \\
+\pd{C}{w^{(2)}} &= \pd{C}{z_i^{(3)}}
+  \cdot \pd{z_i^{(3)}}{a_i^{(2)}}
+  \cdot \pd{a_i^{(2)}}{z_i^{(2)}}
+  \cdot \pd{z_i^{(2)}}{w_i^{(2)}}\\
+\pd{C}{w^{(2)}} &= \pd{C}{z_i^{(2)}}
+  \cdot \pd{z_i^{(2)}}{w_i^{(2)}}\\
+\pd{C}{w^{(1)}} &= \pd{C}{z_i^{(2)}}
+  \cdot \pd{z_i^{(2)}}{a_i^{(1)}}
+  \cdot \pd{a_i^{(1)}}{z_i^{(1)}}
+  \cdot \pd{z_i^{(1)}}{w_i^{(1)}}\\
+\pd{C}{w^{(1)}} &= \pd{C}{z_i^{(1)}}
+  \cdot \pd{z_i^{(1)}}{w_i^{(1)}}
+\end{align}
+
+\subsubsection{Generalization of $\pd{C}{w_i^{(l)}}$ and $\pd{C}{b_i^{(l)}}$}
+
+When $l = L$
+
+\begin{align}
+\pd{C}{w^{(l)}} &= \pd{C}{a_i^{(l)}}
+  \cdot \pd{a_i^{(l)}}{z_i^{(l)}}
+  \cdot \pd{z_i^{(l)}}{w^{(l)}} \\
+\pd{C}{b^{(l)}} &= \pd{C}{a_i^{(l)}}
+  \cdot \pd{a_i^{(l)}}{z_i^{(l)}}
+  \cdot \pd{z_i^{(l)}}{b^{(l)}}
+\end{align}
+
+When $l < L$ and $l > 0$
+
+\begin{align}
+\pd{C}{w^{(l)}} &= \pd{C}{z_i^{(l+1)}}
+  \cdot \pd{z_i^{(l+1)}}{a_i^{(l)}}
+  \cdot \pd{a_i^{(l)}}{z_i^{(l)}}
+  \cdot \pd{z_i^{(l)}}{w_i^{(l)}} \\
+\pd{C}{b^{(l)}} &= \pd{C}{z_i^{(l+1)}}
+  \cdot \pd{z_i^{(l+1)}}{a_i^{(l)}}
+  \cdot \pd{a_i^{(l)}}{z_i^{(l)}}
+  \cdot \pd{z_i^{(l)}}{b_i^{(l)}}
+\end{align}
+
+\subsubsection{Introducing $\delta_i^{(l)}$}
+
+$\delta_i^{(l)}$: how much does changing the input $z_i^{(l)}$
+to this neuron change the cost?
+
+When $l = L$
+
+\begin{align}
+\delta_i^{(l)} &= \pd{C}{a_i^{(l)}} \cdot \pd{a_i^{(l)}}{z_i^{(l)}}
+\end{align}
+
+\begin{align}
+\pd{C}{w^{(l)}} &= \delta_i^{(l)}
+  \cdot \pd{z_i^{(l)}}{w^{(l)}} \\
+\pd{C}{b^{(l)}} &= \delta_i^{(l)}
+  \cdot \pd{z_i^{(l)}}{b^{(l)}}
+\end{align}
+
+When $l < L$ and $l > 0$
+
+\begin{align}
+\delta_i^{(l)} &= \delta_i^{(l+1)} 
+  \cdot \pd{z_i^{(l+1)}}{a_i^{(l)}}
+  \cdot \pd{a_i^{(l)}}{z_i^{(l)}}
+\end{align}
+
+\begin{align}
+\pd{C}{w^{(l)}} &= \delta_i^{(l)}
+  \cdot \pd{z_i^{(l)}}{w_i^{(l)}} \\
+\pd{C}{b^{(l)}} &= \delta_i^{(l)}
+  \cdot \pd{z_i^{(l)}}{b_i^{(l)}}
+\end{align}
+
+\subsubsection{Concrete needed derivatives}
+
+\begin{align}
+\pd{C}{w^{(L)}} &= \pd{C}{a_i^{(L)}}\cdot\pd{a_i^{(L)}}{z_i^{(L)}}\cdot\pd{z_i^{(L)}}{w^{(L)}} \\
+\pd{C}{a^{(L)}} &= \avgsum[i,n] 2 (a_i^{(L)} - y_i) \\
+\pd{a_i^{(l)}}{z_i^{(l)}} &= ({a_i^{(l)}}) (1-{a_i^{(l)}}) \\
+\pd{z_i^{(l)}}{w^{(l)}} & = a_i^{(l)} \\
+\pd{z_i^{(l+1)}}{a^{(l)}} & = w^{(l+1)}
+\end{align}
+
+
+
+\end{document}
