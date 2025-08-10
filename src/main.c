@@ -7,21 +7,22 @@
 #define TENSOR_H_IMPLEMENTATION
 #include "tensor.h"
 
+#include "hrtimer.h"
+
 float sigmoidf(float x)
 {
     return 1.f / (1.f + expf(-x)); 
 }
 
-float sigmoidf_derivative(float x)
+float sigmoidf_derivative(float x_sigmoid)
 {
-    return sigmoidf(x) * (1 - sigmoidf(x)); 
+    return x_sigmoid * (1 - x_sigmoid); 
 }
 
 typedef struct {
     tensor_t as;
     tensor_t ws;
     tensor_t bs;
-    tensor_t dt;
     float (*act)(float z);
     float (*dact)(float z);
 } layer_t;
@@ -91,7 +92,6 @@ void nn_alloc(nn_t* nn, size_t arch[], size_t arch_count)
         MAT_ALLOC(&nn->layers[i].ws, MAT_COLS(&nn->layers[i-1].as), arch[i]);
         MAT_ALLOC(&nn->layers[i].bs, 1, arch[i]);
         MAT_ALLOC(&nn->layers[i].as, 1, arch[i]);
-        MAT_ALLOC(&nn->layers[i].dt, 1, arch[i]);
         nn->layers[i].act  = &sigmoidf;
         nn->layers[i].dact = &sigmoidf_derivative;
     };
@@ -133,6 +133,15 @@ void nn_rand(nn_t* nn, float low, float high)
     }
 }
 
+void nn_fill(nn_t* nn, float value)
+{
+    for (size_t i = 1; i < nn->arch_count; ++i) {
+        MAT_FILL(&nn->layers[i].bs, value);
+        MAT_FILL(&nn->layers[i].ws, value);
+        MAT_FILL(&nn->layers[i].as, value);
+    }
+}
+
 void nn_forward(nn_t* nn)
 {
     for (size_t i = 1; i < nn->arch_count; ++i) {
@@ -150,7 +159,9 @@ float nn_cost(nn_t* nn, tensor_t* target)
 
     float cost = 0.0f;
 
-    for (size_t i = 0; i < MAT_ROWS(target); ++i) {
+    size_t samples = MAT_ROWS(target);
+
+    for (size_t i = 0; i < samples; ++i) {
         row_t row, x, y;
         tensor_2d_to_1d_row_view(&row, target, i);
         tensor_1d_slice(&x, &row, 0, MAT_COLS(input_mat));
@@ -164,7 +175,7 @@ float nn_cost(nn_t* nn, tensor_t* target)
             cost += d * d;
         }
     }
-    return cost /= MAT_ROWS(target);
+    return cost /= samples;
 }
 
 void nn_finite_diff(nn_t* nn, nn_t* grad, tensor_t* target, float eps)
@@ -191,24 +202,69 @@ void nn_finite_diff(nn_t* nn, nn_t* grad, tensor_t* target, float eps)
     }
 }
 
-void nn_backprop(nn_t* nn, nn_t* grad, tensor_t* target, float eps)
+void nn_backprop(nn_t* nn, nn_t* grad, tensor_t* target)
 {
-    float saved, c;
+    assert(MAT_COLS(&NN_INPUT(nn)) + MAT_COLS(&NN_OUTPUT(nn)) == MAT_COLS(target));
 
-    for (size_t l = nn->arch_count - 1; l >= 0; --l) {
-        for (size_t j = 0; j < MAT_ROWS(&nn->layers[l].ws); ++j) {
-            for (size_t k = 0; k < MAT_COLS(&nn->layers[l].ws); ++k) {
-                saved = MAT_AT(&nn->layers[l].ws, j, k);
-                MAT_AT(&nn->layers[l].ws, j, k) += eps;
-                MAT_AT(&grad->layers[l].ws, j, k) = (nn_cost(nn, target) - c)/eps;
-                MAT_AT(&nn->layers[l].ws, j, k) = saved;
+    size_t samples = MAT_ROWS(target);
+
+    tensor_t* input_mat  = &NN_INPUT(nn);
+    tensor_t* output_mat = &NN_OUTPUT(nn);
+
+    nn_fill(grad, 0.0f);
+
+    for (size_t i = 0; i < samples; ++i) {
+        row_t row, x, y;
+        tensor_2d_to_1d_row_view(&row, target, i);
+        tensor_1d_slice(&x, &row, 0, MAT_COLS(input_mat));
+        tensor_1d_slice(&y, &row, MAT_COLS(input_mat), MAT_COLS(output_mat));
+        ROW_COPY(input_mat, &x);
+        nn_forward(nn);
+
+        for (size_t l = 0; l < nn->arch_count; ++l) {
+            MAT_FILL(&grad->layers[l].as, 0.0f);
+        }
+
+        // compute the last layer activation gradient
+        size_t last_layer = nn->arch_count - 1;
+        for (size_t j = 0; j < MAT_COLS(&NN_OUTPUT(nn)); ++j) {
+            float a = MAT_AT(&NN_OUTPUT(nn), 0, j);
+            float expected = ROW_AT(&y, j);
+            MAT_AT(&grad->layers[last_layer].as, 0, j) = 2.0f * (a - expected);
+        }
+
+        for (size_t l = nn->arch_count - 1; l > 0; --l) {
+            for (size_t j = 0; j < MAT_COLS(&nn->layers[l].as); ++j) {
+                float a = MAT_AT(&nn->layers[l].as, 0, j);
+                float dC_da = MAT_AT(&grad->layers[l].as, 0, j);
+                float da_dz = (nn->layers[l].dact)(a);
+
+                float delta = dC_da * da_dz;
+                MAT_AT(&grad->layers[l].bs, 0, j) += delta;
+
+                // iterate over neurons in the previous layer 'l-1'
+                for (size_t k = 0; k < MAT_COLS(&nn->layers[l-1].as); ++k) {
+                    float prev_a = MAT_AT(&nn->layers[l-1].as, 0, k); // a_{l-1}
+                    float w = MAT_AT(&nn->layers[l].ws, k, j);        // w_kj
+
+                    // accumulate gradient for the weight (dC/dw = dC/dz * a_{l-1})
+                    MAT_AT(&grad->layers[l].ws, k, j) += delta * prev_a;
+
+                    // propagate error to the previous layer's activation gradient
+                    // (dC/da_{l-1} = SUM over j of dC/dz_l * w_kj)
+                    MAT_AT(&grad->layers[l-1].as, 0, k) += delta * w;
+                }
             }
         }
-        for (size_t j = 0; j < MAT_COLS(&nn->layers[l].bs); ++j) {
-            saved = MAT_AT(&nn->layers[l].bs, 0, j);
-            MAT_AT(&nn->layers[l].bs, 0, j) += eps;
-            MAT_AT(&grad->layers[l].bs, 0, j) = (nn_cost(nn, target) - c)/eps;
-            MAT_AT(&nn->layers[l].bs, 0, j) = saved;
+    }
+    for (size_t l = 1; l < nn->arch_count; ++l) {
+        for (size_t j = 0; j < MAT_ROWS(&grad->layers[l].ws); ++j) {
+            for (size_t k = 0; k < MAT_COLS(&grad->layers[l].ws); ++k) {
+                MAT_AT(&grad->layers[l].ws, j, k) /= samples;
+            }
+        }
+        for (size_t j = 0; j < MAT_COLS(&grad->layers[l].bs); ++j) {
+            MAT_AT(&grad->layers[l].bs, 0, j) /= samples;
         }
     }
 }
@@ -225,6 +281,30 @@ void nn_learn(nn_t* nn, nn_t* grad, float rate)
             MAT_AT(&nn->layers[l].bs, 0, j) -= rate * MAT_AT(&grad->layers[l].bs, 0, j);
         }
     }
+}
+
+void nn_train_finite_diff(nn_t* nn, tensor_t* target, size_t epochs, float rate, float eps, size_t batch_size)
+{
+    nn_t grad;
+    nn_alloc(&grad, nn->arch, nn->arch_count);
+    nn_fill(&grad, 0);
+    for (size_t epoch = 0; epoch < epochs; ++epoch) {
+        nn_finite_diff(nn, &grad, target, eps);
+        nn_learn(nn, &grad, rate);
+    }
+    nn_free(&grad);
+}
+
+void nn_train(nn_t* nn, tensor_t* target, size_t epochs, float rate, size_t batch_size)
+{
+    nn_t grad;
+    nn_alloc(&grad, nn->arch, nn->arch_count);
+    nn_fill(&grad, 0);
+    for (size_t epoch = 0; epoch < epochs; ++epoch) {
+        nn_backprop(nn, &grad, target);
+        nn_learn(nn, &grad, rate);
+    }
+    nn_free(&grad);
 }
 
 #define ARRAY_LEN(_arr) sizeof(_arr)/sizeof(_arr[0])
@@ -248,42 +328,54 @@ int main(int argc, char *argv[])
     srand(0);
     nn_t nn;
 
-    size_t arch[] = {2, 1};
+    size_t arch[] = {2, 2, 1};
     nn_alloc(&nn, arch, ARRAY_LEN(arch));
 
-    nn_rand(&nn, 0, 1);
     nn_print(&nn);
 
     float rate = 1e-1;
     float eps  = 1e-3;
 
-    nn_t grad;
-    nn_alloc(&grad, nn.arch, nn.arch_count);
+    nn_fill(&nn, 0);
+    nn_rand(&nn, 0, 1);
 
-    for (size_t epoch = 0; epoch < 1000*1000; ++epoch) {
-        // printf("-----------EPOCH %ld---------------\n", epoch);
-        nn_finite_diff(&nn, &grad, &target, eps);
-        nn_learn(&nn, &grad, rate);
-        // printf("epoch = %ld, cost = %f\n", epoch, nn_cost(&nn, &target));
-        // nn_print(&nn);
-        // for (size_t i = 0; i < 2; ++i) {
-        //     for (size_t j = 0; j < 2; ++j) {
-        //         mat_t* input  = &NN_INPUT(&nn);
-        //         MAT_AT(input, 0, 0) = i;
-        //         MAT_AT(input, 0, 1) = j;
-        //         nn_forward(&nn);
-        //         tensor_t* output = &NN_OUTPUT(&nn);
-        //         printf("%ld %ld = %f\n", i, j, MAT_AT(output, 0, 0));
-        //     }
-        // }
+    size_t finite_epoch = 100 * 1000;
+    float finite_time;
+
+    stopwatch_t sw;
+    stopwatch_start(&sw);
+    nn_train_finite_diff(&nn, &target, finite_epoch, rate, eps, 1);
+    stopwatch_stop(&sw);
+
+    finite_time = stopwatch_get_elapsed_seconds(&sw, get_timer_frequency());
+
+    printf("finite diff: cost(%f), epoch(%ld), time(%f)\n", nn_cost(&nn, &target), finite_epoch, finite_time);
+    printf("-----------------\n");
+    for (size_t i = 0; i < 2; ++i) {
+        for (size_t j = 0; j < 2; ++j) {
+            mat_t* input  = &NN_INPUT(&nn);
+            MAT_AT(input, 0, 0) = i;
+            MAT_AT(input, 0, 1) = j;
+            nn_forward(&nn);
+            tensor_t* output = &NN_OUTPUT(&nn);
+            printf("%ld %ld = %f\n", i, j, MAT_AT(output, 0, 0));
+        }
     }
 
-    nn_free(&grad);
+    size_t backprop_epoch = 1000 * 1000;
+    float backprop_time;
 
-    printf("cost = %f\n", nn_cost(&nn, &target));
+    nn_fill(&nn, 0);
+    nn_rand(&nn, 0, 1);
 
+    stopwatch_start(&sw);
+    nn_train(&nn, &target, backprop_epoch, rate, 1);
+    stopwatch_stop(&sw);
+
+    backprop_time = stopwatch_get_elapsed_seconds(&sw, get_timer_frequency());
+
+    printf("backprop: cost(%f), epoch(%ld), time(%f)\n", nn_cost(&nn, &target), backprop_epoch, backprop_time);
     printf("-----------------\n");
-
     for (size_t i = 0; i < 2; ++i) {
         for (size_t j = 0; j < 2; ++j) {
             mat_t* input  = &NN_INPUT(&nn);
